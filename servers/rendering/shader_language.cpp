@@ -2974,7 +2974,7 @@ const ShaderLanguage::BuiltinFuncDef ShaderLanguage::builtin_func_defs[] = {
 	{ "bitfieldInsert", TYPE_UVEC3, { TYPE_UVEC3, TYPE_UVEC3, TYPE_INT, TYPE_INT, TYPE_VOID }, { "base", "insert", "offset", "bits" }, TAG_GLOBAL, true },
 	{ "bitfieldInsert", TYPE_UVEC4, { TYPE_UVEC4, TYPE_UVEC4, TYPE_INT, TYPE_INT, TYPE_VOID }, { "base", "insert", "offset", "bits" }, TAG_GLOBAL, true },
 
-	// bitfieldReverse
+		// bitfieldReverse
 
 	{ "bitfieldReverse", TYPE_INT, { TYPE_INT, TYPE_VOID }, { "value" }, TAG_GLOBAL, true },
 	{ "bitfieldReverse", TYPE_IVEC2, { TYPE_IVEC2, TYPE_VOID }, { "value" }, TAG_GLOBAL, true },
@@ -2986,7 +2986,7 @@ const ShaderLanguage::BuiltinFuncDef ShaderLanguage::builtin_func_defs[] = {
 	{ "bitfieldReverse", TYPE_UVEC3, { TYPE_UVEC3, TYPE_VOID }, { "value" }, TAG_GLOBAL, true },
 	{ "bitfieldReverse", TYPE_UVEC4, { TYPE_UVEC4, TYPE_VOID }, { "value" }, TAG_GLOBAL, true },
 
-	// bitCount
+		// bitCount
 
 	{ "bitCount", TYPE_INT, { TYPE_INT, TYPE_VOID }, { "value" }, TAG_GLOBAL, true },
 	{ "bitCount", TYPE_IVEC2, { TYPE_IVEC2, TYPE_VOID }, { "value" }, TAG_GLOBAL, true },
@@ -2998,7 +2998,7 @@ const ShaderLanguage::BuiltinFuncDef ShaderLanguage::builtin_func_defs[] = {
 	{ "bitCount", TYPE_UVEC3, { TYPE_UVEC3, TYPE_VOID }, { "value" }, TAG_GLOBAL, true },
 	{ "bitCount", TYPE_UVEC4, { TYPE_UVEC4, TYPE_VOID }, { "value" }, TAG_GLOBAL, true },
 
-	// findLSB
+		// findLSB
 
 	{ "findLSB", TYPE_INT, { TYPE_INT, TYPE_VOID }, { "value" }, TAG_GLOBAL, true },
 	{ "findLSB", TYPE_IVEC2, { TYPE_IVEC2, TYPE_VOID }, { "value" }, TAG_GLOBAL, true },
@@ -3010,7 +3010,7 @@ const ShaderLanguage::BuiltinFuncDef ShaderLanguage::builtin_func_defs[] = {
 	{ "findLSB", TYPE_UVEC3, { TYPE_UVEC3, TYPE_VOID }, { "value" }, TAG_GLOBAL, true },
 	{ "findLSB", TYPE_UVEC4, { TYPE_UVEC4, TYPE_VOID }, { "value" }, TAG_GLOBAL, true },
 
-	// findMSB
+		// findMSB
 
 	{ "findMSB", TYPE_INT, { TYPE_INT, TYPE_VOID }, { "value" }, TAG_GLOBAL, true },
 	{ "findMSB", TYPE_IVEC2, { TYPE_IVEC2, TYPE_VOID }, { "value" }, TAG_GLOBAL, true },
@@ -3022,47 +3022,51 @@ const ShaderLanguage::BuiltinFuncDef ShaderLanguage::builtin_func_defs[] = {
 	{ "findMSB", TYPE_UVEC3, { TYPE_UVEC3, TYPE_VOID }, { "value" }, TAG_GLOBAL, true },
 	{ "findMSB", TYPE_UVEC4, { TYPE_UVEC4, TYPE_VOID }, { "value" }, TAG_GLOBAL, true },
 
-	// umulExtended
+		// umulExtended
 
 	{ "umulExtended", TYPE_VOID, { TYPE_UINT, TYPE_UINT, TYPE_UINT, TYPE_UINT, TYPE_VOID }, { "x", "y", "msb", "lsb" }, TAG_GLOBAL, true },
 	{ "umulExtended", TYPE_VOID, { TYPE_UVEC2, TYPE_UVEC2, TYPE_UVEC2, TYPE_UVEC2, TYPE_VOID }, { "x", "y", "msb", "lsb" }, TAG_GLOBAL, true },
 	{ "umulExtended", TYPE_VOID, { TYPE_UVEC3, TYPE_UVEC3, TYPE_UVEC3, TYPE_UVEC3, TYPE_VOID }, { "x", "y", "msb", "lsb" }, TAG_GLOBAL, true },
 	{ "umulExtended", TYPE_VOID, { TYPE_UVEC4, TYPE_UVEC4, TYPE_UVEC4, TYPE_UVEC4, TYPE_VOID }, { "x", "y", "msb", "lsb" }, TAG_GLOBAL, true },
 
-	// imulExtended
+		// imulExtended
 
 	{ "imulExtended", TYPE_VOID, { TYPE_INT, TYPE_INT, TYPE_INT, TYPE_INT, TYPE_VOID }, { "x", "y", "msb", "lsb" }, TAG_GLOBAL, true },
 	{ "imulExtended", TYPE_VOID, { TYPE_IVEC2, TYPE_IVEC2, TYPE_IVEC2, TYPE_IVEC2, TYPE_VOID }, { "x", "y", "msb", "lsb" }, TAG_GLOBAL, true },
 	{ "imulExtended", TYPE_VOID, { TYPE_IVEC3, TYPE_IVEC3, TYPE_IVEC3, TYPE_IVEC3, TYPE_VOID }, { "x", "y", "msb", "lsb" }, TAG_GLOBAL, true },
 	{ "imulExtended", TYPE_VOID, { TYPE_IVEC4, TYPE_IVEC4, TYPE_IVEC4, TYPE_IVEC4, TYPE_VOID }, { "x", "y", "msb", "lsb" }, TAG_GLOBAL, true },
 
-	// uaddCarry
+		// uaddCarry
 
 	{ "uaddCarry", TYPE_UINT, { TYPE_UINT, TYPE_UINT, TYPE_UINT, TYPE_VOID }, { "x", "y", "carry" }, TAG_GLOBAL, true },
 	{ "uaddCarry", TYPE_UVEC2, { TYPE_UVEC2, TYPE_UVEC2, TYPE_UVEC2, TYPE_VOID }, { "x", "y", "carry" }, TAG_GLOBAL, true },
 	{ "uaddCarry", TYPE_UVEC3, { TYPE_UVEC3, TYPE_UVEC3, TYPE_UVEC3, TYPE_VOID }, { "x", "y", "carry" }, TAG_GLOBAL, true },
 	{ "uaddCarry", TYPE_UVEC4, { TYPE_UVEC4, TYPE_UVEC4, TYPE_UVEC4, TYPE_VOID }, { "x", "y", "carry" }, TAG_GLOBAL, true },
 
-	// usubBorrow
+		// usubBorrow
 
 	{ "usubBorrow", TYPE_UINT, { TYPE_UINT, TYPE_UINT, TYPE_UINT, TYPE_VOID }, { "x", "y", "borrow" }, TAG_GLOBAL, true },
 	{ "usubBorrow", TYPE_UVEC2, { TYPE_UVEC2, TYPE_UVEC2, TYPE_UVEC2, TYPE_VOID }, { "x", "y", "borrow" }, TAG_GLOBAL, true },
 	{ "usubBorrow", TYPE_UVEC3, { TYPE_UVEC3, TYPE_UVEC3, TYPE_UVEC3, TYPE_VOID }, { "x", "y", "borrow" }, TAG_GLOBAL, true },
 	{ "usubBorrow", TYPE_UVEC4, { TYPE_UVEC4, TYPE_UVEC4, TYPE_UVEC4, TYPE_VOID }, { "x", "y", "borrow" }, TAG_GLOBAL, true },
 
-	// ldexp
+		// ldexp
 
 	{ "ldexp", TYPE_FLOAT, { TYPE_FLOAT, TYPE_INT, TYPE_VOID }, { "x", "exp" }, TAG_GLOBAL, true },
 	{ "ldexp", TYPE_VEC2, { TYPE_VEC2, TYPE_IVEC2, TYPE_VOID }, { "x", "exp" }, TAG_GLOBAL, true },
 	{ "ldexp", TYPE_VEC3, { TYPE_VEC3, TYPE_IVEC3, TYPE_VOID }, { "x", "exp" }, TAG_GLOBAL, true },
 	{ "ldexp", TYPE_VEC4, { TYPE_VEC4, TYPE_IVEC4, TYPE_VOID }, { "x", "exp" }, TAG_GLOBAL, true },
 
-	// frexp
+		// frexp
 
 	{ "frexp", TYPE_FLOAT, { TYPE_FLOAT, TYPE_INT, TYPE_VOID }, { "x", "exp" }, TAG_GLOBAL, true },
 	{ "frexp", TYPE_VEC2, { TYPE_VEC2, TYPE_IVEC2, TYPE_VOID }, { "x", "exp" }, TAG_GLOBAL, true },
 	{ "frexp", TYPE_VEC3, { TYPE_VEC3, TYPE_IVEC3, TYPE_VOID }, { "x", "exp" }, TAG_GLOBAL, true },
 	{ "frexp", TYPE_VEC4, { TYPE_VEC4, TYPE_IVEC4, TYPE_VOID }, { "x", "exp" }, TAG_GLOBAL, true },
+
+		// sample directional shadow
+
+	{ "sample_directional_shadow", TYPE_FLOAT, { TYPE_UINT, TYPE_VEC3, TYPE_VOID }, {"light_idx", "vertex"}, TAG_GLOBAL, true },
 
 	{ nullptr, TYPE_VOID, { TYPE_VOID }, { "" }, TAG_GLOBAL, false }
 };
