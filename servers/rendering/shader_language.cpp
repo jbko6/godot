@@ -3066,7 +3066,8 @@ const ShaderLanguage::BuiltinFuncDef ShaderLanguage::builtin_func_defs[] = {
 
 		// sample directional shadow
 
-	{ "sample_directional_shadow", TYPE_FLOAT, { TYPE_UINT, TYPE_VEC3, TYPE_VOID }, {"light_idx", "vertex"}, TAG_GLOBAL, true },
+	{ "sample_directional_shadow", TYPE_FLOAT, { TYPE_UINT, TYPE_VEC3, TYPE_VOID }, { "light_idx", "vertex" }, TAG_GLOBAL, true },
+	{ "sample_directional_shadow", TYPE_FLOAT, { TYPE_UINT, TYPE_VEC3, TYPE_FLOAT, TYPE_VOID }, { "light_idx", "vertex", "blur_factor" }, TAG_GLOBAL, true },
 
 	{ nullptr, TYPE_VOID, { TYPE_VOID }, { "" }, TAG_GLOBAL, false }
 };

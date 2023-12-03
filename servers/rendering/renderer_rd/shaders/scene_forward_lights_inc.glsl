@@ -12,23 +12,23 @@ float V_GGX(float NdotL, float NdotV, float alpha) {
 }
 
 float D_GGX_anisotropic(float cos_theta_m, float alpha_x, float alpha_y, float cos_phi, float sin_phi) {
-	float alpha2 = alpha_x * alpha_y;
-	highp vec3 v = vec3(alpha_y * cos_phi, alpha_x * sin_phi, alpha2 * cos_theta_m);
-	highp float v2 = dot(v, v);
-	float w2 = alpha2 / v2;
-	float D = alpha2 * w2 * w2 * (1.0 / M_PI);
-	return D;
+       float alpha2 = alpha_x * alpha_y;
+       highp vec3 v = vec3(alpha_y * cos_phi, alpha_x * sin_phi, alpha2 * cos_theta_m);
+       highp float v2 = dot(v, v);
+       float w2 = alpha2 / v2;
+       float D = alpha2 * w2 * w2 * (1.0 / M_PI);
+       return D;
 }
 
 float V_GGX_anisotropic(float alpha_x, float alpha_y, float TdotV, float TdotL, float BdotV, float BdotL, float NdotV, float NdotL) {
-	float Lambda_V = NdotL * length(vec3(alpha_x * TdotV, alpha_y * BdotV, NdotV));
-	float Lambda_L = NdotV * length(vec3(alpha_x * TdotL, alpha_y * BdotL, NdotL));
-	return 0.5 / (Lambda_V + Lambda_L);
+       float Lambda_V = NdotL * length(vec3(alpha_x * TdotV, alpha_y * BdotV, NdotV));
+       float Lambda_L = NdotV * length(vec3(alpha_x * TdotL, alpha_y * BdotL, NdotL));
+       return 0.5 / (Lambda_V + Lambda_L);
 }
 
 float SchlickFresnel(float u) {
-	float m = 1.0 - u;
-	float m2 = m * m;
+       float m = 1.0 - u;
+       float m2 = m * m;
 	return m2 * m2 * m; // pow(m,5)
 }
 
@@ -387,6 +387,93 @@ m_var.xyz += normal_bias;
 	}
 }
 
+void light_process_directional_shadow(uint idx, vec3 vertex, highp vec2 directional_shadow_pixel_size, inout uint shadow0, inout uint shadow1, float blur_factor) {
+
+	float shadow = 1.0;
+
+	if (directional_lights.data[idx].shadow_opacity > 0.001) {
+		float depth_z = -vertex.z;
+		vec3 light_dir = directional_lights.data[idx].direction;
+		vec3 base_normal_bias = normalize(normal_interp) * (1.0 - max(0.0, dot(light_dir, -normalize(normal_interp))));
+
+#define BIAS_FUNC(m_var, m_idx)                                                                 \
+m_var.xyz += light_dir * directional_lights.data[idx].shadow_bias[m_idx];                     \
+vec3 normal_bias = base_normal_bias * directional_lights.data[idx].shadow_normal_bias[m_idx]; \
+normal_bias -= light_dir * dot(light_dir, normal_bias);                                     \
+m_var.xyz += normal_bias;
+
+		vec4 pssm_coord;
+
+		if (depth_z < directional_lights.data[idx].shadow_split_offsets.x) {
+			vec4 v = vec4(vertex, 1.0);
+
+			BIAS_FUNC(v, 0)
+
+			pssm_coord = (directional_lights.data[idx].shadow_matrix1 * v);
+		} else if (depth_z < directional_lights.data[idx].shadow_split_offsets.y) {
+			vec4 v = vec4(vertex, 1.0);
+
+			BIAS_FUNC(v, 1)
+
+			pssm_coord = (directional_lights.data[idx].shadow_matrix2 * v);
+		} else if (depth_z < directional_lights.data[idx].shadow_split_offsets.z) {
+			vec4 v = vec4(vertex, 1.0);
+
+			BIAS_FUNC(v, 2)
+
+			pssm_coord = (directional_lights.data[idx].shadow_matrix3 * v);
+		} else {
+			vec4 v = vec4(vertex, 1.0);
+
+			BIAS_FUNC(v, 3)
+
+			pssm_coord = (directional_lights.data[idx].shadow_matrix4 * v);
+		}
+
+		pssm_coord /= pssm_coord.w;
+
+		shadow = sample_directional_pcf_shadow(directional_shadow_atlas, directional_shadow_pixel_size * directional_lights.data[idx].soft_shadow_scale * blur_factor, pssm_coord);
+
+		if (directional_lights.data[idx].blend_splits) {
+			float pssm_blend;
+
+			if (depth_z < directional_lights.data[idx].shadow_split_offsets.x) {
+				vec4 v = vec4(vertex, 1.0);
+				BIAS_FUNC(v, 1)
+				pssm_coord = (directional_lights.data[idx].shadow_matrix2 * v);
+				pssm_blend = smoothstep(0.0, directional_lights.data[idx].shadow_split_offsets.x, depth_z);
+			} else if (depth_z < directional_lights.data[idx].shadow_split_offsets.y) {
+				vec4 v = vec4(vertex, 1.0);
+				BIAS_FUNC(v, 2)
+				pssm_coord = (directional_lights.data[idx].shadow_matrix3 * v);
+				pssm_blend = smoothstep(directional_lights.data[idx].shadow_split_offsets.x, directional_lights.data[idx].shadow_split_offsets.y, depth_z);
+			} else if (depth_z < directional_lights.data[idx].shadow_split_offsets.z) {
+				vec4 v = vec4(vertex, 1.0);
+				BIAS_FUNC(v, 3)
+				pssm_coord = (directional_lights.data[idx].shadow_matrix4 * v);
+				pssm_blend = smoothstep(directional_lights.data[idx].shadow_split_offsets.y, directional_lights.data[idx].shadow_split_offsets.z, depth_z);
+			} else {
+				pssm_blend = 0.0; //if no blend, same coord will be used (divide by z will result in same value, and already cached)
+			}
+
+			pssm_coord /= pssm_coord.w;
+
+			float shadow2 = sample_directional_pcf_shadow(directional_shadow_atlas, directional_shadow_pixel_size * directional_lights.data[idx].soft_shadow_scale * blur_factor, pssm_coord);
+			shadow = mix(shadow, shadow2, pssm_blend);
+		}
+
+		shadow = mix(shadow, 1.0, smoothstep(directional_lights.data[idx].fade_from, directional_lights.data[idx].fade_to, vertex.z)); //done with negative values for performance
+
+#undef BIAS_FUNC
+	} // shadows
+
+	if (idx < 4) {
+		shadow0 |= uint(clamp(shadow * 255.0, 0.0, 255.0)) << (idx * 8);
+	} else {
+		shadow1 |= uint(clamp(shadow * 255.0, 0.0, 255.0)) << ((idx - 4) * 8);
+	}
+}
+
 float sample_directional_shadow(uint idx, vec3 vertex) {
 
   uint shadow0 = 0;
@@ -395,6 +482,25 @@ float sample_directional_shadow(uint idx, vec3 vertex) {
   float shadow = 1.0; // no shadow
 
   light_process_directional_shadow(idx, vertex, scene_data_block.data.directional_shadow_pixel_size, shadow0, shadow1);
+
+  if (idx < 4) {
+   shadow = float(shadow0 >> (idx * 8u) & 0xFFu) / 255.0;
+  } else {
+   shadow = float(shadow1 >> ((idx - 4u) * 8u) & 0xFFu) / 255.0;
+  }
+
+  return shadow;
+
+}
+
+float sample_directional_shadow(uint idx, vec3 vertex, float blur_factor) {
+
+  uint shadow0 = 0;
+  uint shadow1 = 0;
+
+  float shadow = 1.0; // no shadow
+
+  light_process_directional_shadow(idx, vertex, scene_data_block.data.directional_shadow_pixel_size, shadow0, shadow1, blur_factor);
 
   if (idx < 4) {
    shadow = float(shadow0 >> (idx * 8u) & 0xFFu) / 255.0;
