@@ -512,7 +512,232 @@ float sample_directional_shadow(uint idx, vec3 vertex, float blur_factor) {
 
 }
 
-void light_compute(vec3 N, vec3 L, vec3 V, float A, vec3 light_color, uint light_index, bool is_directional, bool is_spot, bool is_omni, float attenuation, vec3 f0, uint orms, float specular_amount, vec3 albedo, inout float alpha,
+float light_process_omni_shadow(uint idx, vec3 vertex, vec3 normal) {
+#ifndef SHADOWS_DISABLED
+	if (omni_lights.data[idx].shadow_opacity > 0.001) {
+		// there is a shadowmap
+		vec2 texel_size = scene_data_block.data.shadow_atlas_pixel_size;
+		vec4 base_uv_rect = omni_lights.data[idx].atlas_rect;
+		base_uv_rect.xy += texel_size;
+		base_uv_rect.zw -= texel_size * 2.0;
+
+		// Omni lights use direction.xy to store to store the offset between the two paraboloid regions
+		vec2 flip_offset = omni_lights.data[idx].direction.xy;
+
+		vec3 local_vert = (omni_lights.data[idx].shadow_matrix * vec4(vertex, 1.0)).xyz;
+
+		float shadow_len = length(local_vert); //need to remember shadow len from here
+		vec3 shadow_dir = normalize(local_vert);
+
+		vec3 local_normal = normalize(mat3(omni_lights.data[idx].shadow_matrix) * normal);
+		vec3 normal_bias = local_normal * omni_lights.data[idx].shadow_normal_bias * (1.0 - abs(dot(local_normal, shadow_dir)));
+
+		float shadow;
+
+		if (sc_use_light_soft_shadows && omni_lights.data[idx].soft_shadow_size > 0.0) {
+			//soft shadow
+
+			//find blocker
+
+			float blocker_count = 0.0;
+			float blocker_average = 0.0;
+
+			mat2 disk_rotation;
+			{
+				float r = quick_hash(gl_FragCoord.xy) * 2.0 * M_PI;
+				float sr = sin(r);
+				float cr = cos(r);
+				disk_rotation = mat2(vec2(cr, -sr), vec2(sr, cr));
+			}
+
+			vec3 basis_normal = shadow_dir;
+			vec3 v0 = abs(basis_normal.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
+			vec3 tangent = normalize(cross(v0, basis_normal));
+			vec3 bitangent = normalize(cross(tangent, basis_normal));
+			float z_norm = shadow_len * omni_lights.data[idx].inv_radius;
+
+			tangent *= omni_lights.data[idx].soft_shadow_size * omni_lights.data[idx].soft_shadow_scale;
+			bitangent *= omni_lights.data[idx].soft_shadow_size * omni_lights.data[idx].soft_shadow_scale;
+
+			for (uint i = 0; i < sc_penumbra_shadow_samples; i++) {
+				vec2 disk = disk_rotation * scene_data_block.data.penumbra_shadow_kernel[i].xy;
+
+				vec3 pos = local_vert + tangent * disk.x + bitangent * disk.y;
+
+				pos = normalize(pos);
+
+				vec4 uv_rect = base_uv_rect;
+
+				if (pos.z >= 0.0) {
+					uv_rect.xy += flip_offset;
+				}
+
+				pos.z = 1.0 + abs(pos.z);
+				pos.xy /= pos.z;
+
+				pos.xy = pos.xy * 0.5 + 0.5;
+				pos.xy = uv_rect.xy + pos.xy * uv_rect.zw;
+
+				float d = textureLod(sampler2D(shadow_atlas, SAMPLER_LINEAR_CLAMP), pos.xy, 0.0).r;
+				if (d < z_norm) {
+					blocker_average += d;
+					blocker_count += 1.0;
+				}
+			}
+
+			if (blocker_count > 0.0) {
+				//blockers found, do soft shadow
+				blocker_average /= blocker_count;
+				float penumbra = (z_norm - blocker_average) / blocker_average;
+				tangent *= penumbra;
+				bitangent *= penumbra;
+
+				z_norm -= omni_lights.data[idx].inv_radius * omni_lights.data[idx].shadow_bias;
+
+				shadow = 0.0;
+				for (uint i = 0; i < sc_penumbra_shadow_samples; i++) {
+					vec2 disk = disk_rotation * scene_data_block.data.penumbra_shadow_kernel[i].xy;
+					vec3 pos = local_vert + tangent * disk.x + bitangent * disk.y;
+
+					pos = normalize(pos);
+					pos = normalize(pos + normal_bias);
+
+					vec4 uv_rect = base_uv_rect;
+
+					if (pos.z >= 0.0) {
+						uv_rect.xy += flip_offset;
+					}
+
+					pos.z = 1.0 + abs(pos.z);
+					pos.xy /= pos.z;
+
+					pos.xy = pos.xy * 0.5 + 0.5;
+					pos.xy = uv_rect.xy + pos.xy * uv_rect.zw;
+					shadow += textureProj(sampler2DShadow(shadow_atlas, shadow_sampler), vec4(pos.xy, z_norm, 1.0));
+				}
+
+				shadow /= float(sc_penumbra_shadow_samples);
+				shadow = mix(1.0, shadow, omni_lights.data[idx].shadow_opacity);
+
+			} else {
+				//no blockers found, so no shadow
+				shadow = 1.0;
+			}
+		} else {
+			vec4 uv_rect = base_uv_rect;
+
+			vec3 shadow_sample = normalize(shadow_dir + normal_bias);
+			if (shadow_sample.z >= 0.0) {
+				uv_rect.xy += flip_offset;
+				flip_offset *= -1.0;
+			}
+
+			shadow_sample.z = 1.0 + abs(shadow_sample.z);
+			vec2 pos = shadow_sample.xy / shadow_sample.z;
+			float depth = shadow_len - omni_lights.data[idx].shadow_bias;
+			depth *= omni_lights.data[idx].inv_radius;
+			shadow = mix(1.0, sample_omni_pcf_shadow(shadow_atlas, omni_lights.data[idx].soft_shadow_scale / shadow_sample.z, pos, uv_rect, flip_offset, depth), omni_lights.data[idx].shadow_opacity);
+		}
+
+		return shadow;
+	}
+#endif
+
+	return 1.0;
+}
+
+float sample_omni_shadow(uint idx, vec3 vertex, vec3 normal) {
+	return light_process_omni_shadow(idx, vertex, normal);
+}
+
+float light_process_spot_shadow(uint idx, vec3 vertex, vec3 normal) {
+#ifndef SHADOWS_DISABLED
+	if (spot_lights.data[idx].shadow_opacity > 0.001) {
+		vec3 light_rel_vec = spot_lights.data[idx].position - vertex;
+		float light_length = length(light_rel_vec);
+		vec3 spot_dir = spot_lights.data[idx].direction;
+
+		vec3 shadow_dir = light_rel_vec / light_length;
+		vec3 normal_bias = normal * light_length * spot_lights.data[idx].shadow_normal_bias * (1.0 - abs(dot(normal, shadow_dir)));
+
+		//there is a shadowmap
+		vec4 v = vec4(vertex + normal_bias, 1.0);
+
+		vec4 splane = (spot_lights.data[idx].shadow_matrix * v);
+		splane.z -= spot_lights.data[idx].shadow_bias / (light_length * spot_lights.data[idx].inv_radius);
+		splane /= splane.w;
+
+		float shadow;
+		if (sc_use_light_soft_shadows && spot_lights.data[idx].soft_shadow_size > 0.0) {
+			//soft shadow
+
+			//find blocker
+			float z_norm = dot(spot_dir, -light_rel_vec) * spot_lights.data[idx].inv_radius;
+
+			vec2 shadow_uv = splane.xy * spot_lights.data[idx].atlas_rect.zw + spot_lights.data[idx].atlas_rect.xy;
+
+			float blocker_count = 0.0;
+			float blocker_average = 0.0;
+
+			mat2 disk_rotation;
+			{
+				float r = quick_hash(gl_FragCoord.xy) * 2.0 * M_PI;
+				float sr = sin(r);
+				float cr = cos(r);
+				disk_rotation = mat2(vec2(cr, -sr), vec2(sr, cr));
+			}
+
+			float uv_size = spot_lights.data[idx].soft_shadow_size * z_norm * spot_lights.data[idx].soft_shadow_scale;
+			vec2 clamp_max = spot_lights.data[idx].atlas_rect.xy + spot_lights.data[idx].atlas_rect.zw;
+			for (uint i = 0; i < sc_penumbra_shadow_samples; i++) {
+				vec2 suv = shadow_uv + (disk_rotation * scene_data_block.data.penumbra_shadow_kernel[i].xy) * uv_size;
+				suv = clamp(suv, spot_lights.data[idx].atlas_rect.xy, clamp_max);
+				float d = textureLod(sampler2D(shadow_atlas, SAMPLER_LINEAR_CLAMP), suv, 0.0).r;
+				if (d < splane.z) {
+					blocker_average += d;
+					blocker_count += 1.0;
+				}
+			}
+
+			if (blocker_count > 0.0) {
+				//blockers found, do soft shadow
+				blocker_average /= blocker_count;
+				float penumbra = (z_norm - blocker_average) / blocker_average;
+				uv_size *= penumbra;
+
+				shadow = 0.0;
+				for (uint i = 0; i < sc_penumbra_shadow_samples; i++) {
+					vec2 suv = shadow_uv + (disk_rotation * scene_data_block.data.penumbra_shadow_kernel[i].xy) * uv_size;
+					suv = clamp(suv, spot_lights.data[idx].atlas_rect.xy, clamp_max);
+					shadow += textureProj(sampler2DShadow(shadow_atlas, shadow_sampler), vec4(suv, splane.z, 1.0));
+				}
+
+				shadow /= float(sc_penumbra_shadow_samples);
+				shadow = mix(1.0, shadow, spot_lights.data[idx].shadow_opacity);
+
+			} else {
+				//no blockers found, so no shadow
+				shadow = 1.0;
+			}
+		} else {
+			//hard shadow
+			vec3 shadow_uv = vec3(splane.xy * spot_lights.data[idx].atlas_rect.zw + spot_lights.data[idx].atlas_rect.xy, splane.z);
+			shadow = mix(1.0, sample_pcf_shadow(shadow_atlas, spot_lights.data[idx].soft_shadow_scale * scene_data_block.data.shadow_atlas_pixel_size, shadow_uv), spot_lights.data[idx].shadow_opacity);
+		}
+
+		return shadow;
+	}
+
+#endif // SHADOWS_DISABLED
+
+	return 1.0;
+}
+
+float sample_spot_shadow(uint idx, vec3 vertex, vec3 normal) {
+	return light_process_spot_shadow(idx, vertex, normal);
+}
+
+void light_compute(vec3 N, vec3 L, vec3 V, float A, vec3 light_color, uint light_index, bool is_directional, bool is_spot, bool is_omni, float attenuation, float amplitude, vec3 f0, uint orms, float specular_amount, vec3 albedo, inout float alpha,
 #ifdef LIGHT_BACKLIGHT_USED
 		vec3 backlight,
 #endif
@@ -737,140 +962,6 @@ float get_omni_attenuation(float distance, float inv_range, float decay) {
 	return nd * pow(max(distance, 0.0001), -decay);
 }
 
-float light_process_omni_shadow(uint idx, vec3 vertex, vec3 normal) {
-#ifndef SHADOWS_DISABLED
-	if (omni_lights.data[idx].shadow_opacity > 0.001) {
-		// there is a shadowmap
-		vec2 texel_size = scene_data_block.data.shadow_atlas_pixel_size;
-		vec4 base_uv_rect = omni_lights.data[idx].atlas_rect;
-		base_uv_rect.xy += texel_size;
-		base_uv_rect.zw -= texel_size * 2.0;
-
-		// Omni lights use direction.xy to store to store the offset between the two paraboloid regions
-		vec2 flip_offset = omni_lights.data[idx].direction.xy;
-
-		vec3 local_vert = (omni_lights.data[idx].shadow_matrix * vec4(vertex, 1.0)).xyz;
-
-		float shadow_len = length(local_vert); //need to remember shadow len from here
-		vec3 shadow_dir = normalize(local_vert);
-
-		vec3 local_normal = normalize(mat3(omni_lights.data[idx].shadow_matrix) * normal);
-		vec3 normal_bias = local_normal * omni_lights.data[idx].shadow_normal_bias * (1.0 - abs(dot(local_normal, shadow_dir)));
-
-		float shadow;
-
-		if (sc_use_light_soft_shadows && omni_lights.data[idx].soft_shadow_size > 0.0) {
-			//soft shadow
-
-			//find blocker
-
-			float blocker_count = 0.0;
-			float blocker_average = 0.0;
-
-			mat2 disk_rotation;
-			{
-				float r = quick_hash(gl_FragCoord.xy) * 2.0 * M_PI;
-				float sr = sin(r);
-				float cr = cos(r);
-				disk_rotation = mat2(vec2(cr, -sr), vec2(sr, cr));
-			}
-
-			vec3 basis_normal = shadow_dir;
-			vec3 v0 = abs(basis_normal.z) < 0.999 ? vec3(0.0, 0.0, 1.0) : vec3(0.0, 1.0, 0.0);
-			vec3 tangent = normalize(cross(v0, basis_normal));
-			vec3 bitangent = normalize(cross(tangent, basis_normal));
-			float z_norm = shadow_len * omni_lights.data[idx].inv_radius;
-
-			tangent *= omni_lights.data[idx].soft_shadow_size * omni_lights.data[idx].soft_shadow_scale;
-			bitangent *= omni_lights.data[idx].soft_shadow_size * omni_lights.data[idx].soft_shadow_scale;
-
-			for (uint i = 0; i < sc_penumbra_shadow_samples; i++) {
-				vec2 disk = disk_rotation * scene_data_block.data.penumbra_shadow_kernel[i].xy;
-
-				vec3 pos = local_vert + tangent * disk.x + bitangent * disk.y;
-
-				pos = normalize(pos);
-
-				vec4 uv_rect = base_uv_rect;
-
-				if (pos.z >= 0.0) {
-					uv_rect.xy += flip_offset;
-				}
-
-				pos.z = 1.0 + abs(pos.z);
-				pos.xy /= pos.z;
-
-				pos.xy = pos.xy * 0.5 + 0.5;
-				pos.xy = uv_rect.xy + pos.xy * uv_rect.zw;
-
-				float d = textureLod(sampler2D(shadow_atlas, SAMPLER_LINEAR_CLAMP), pos.xy, 0.0).r;
-				if (d < z_norm) {
-					blocker_average += d;
-					blocker_count += 1.0;
-				}
-			}
-
-			if (blocker_count > 0.0) {
-				//blockers found, do soft shadow
-				blocker_average /= blocker_count;
-				float penumbra = (z_norm - blocker_average) / blocker_average;
-				tangent *= penumbra;
-				bitangent *= penumbra;
-
-				z_norm -= omni_lights.data[idx].inv_radius * omni_lights.data[idx].shadow_bias;
-
-				shadow = 0.0;
-				for (uint i = 0; i < sc_penumbra_shadow_samples; i++) {
-					vec2 disk = disk_rotation * scene_data_block.data.penumbra_shadow_kernel[i].xy;
-					vec3 pos = local_vert + tangent * disk.x + bitangent * disk.y;
-
-					pos = normalize(pos);
-					pos = normalize(pos + normal_bias);
-
-					vec4 uv_rect = base_uv_rect;
-
-					if (pos.z >= 0.0) {
-						uv_rect.xy += flip_offset;
-					}
-
-					pos.z = 1.0 + abs(pos.z);
-					pos.xy /= pos.z;
-
-					pos.xy = pos.xy * 0.5 + 0.5;
-					pos.xy = uv_rect.xy + pos.xy * uv_rect.zw;
-					shadow += textureProj(sampler2DShadow(shadow_atlas, shadow_sampler), vec4(pos.xy, z_norm, 1.0));
-				}
-
-				shadow /= float(sc_penumbra_shadow_samples);
-				shadow = mix(1.0, shadow, omni_lights.data[idx].shadow_opacity);
-
-			} else {
-				//no blockers found, so no shadow
-				shadow = 1.0;
-			}
-		} else {
-			vec4 uv_rect = base_uv_rect;
-
-			vec3 shadow_sample = normalize(shadow_dir + normal_bias);
-			if (shadow_sample.z >= 0.0) {
-				uv_rect.xy += flip_offset;
-				flip_offset *= -1.0;
-			}
-
-			shadow_sample.z = 1.0 + abs(shadow_sample.z);
-			vec2 pos = shadow_sample.xy / shadow_sample.z;
-			float depth = shadow_len - omni_lights.data[idx].shadow_bias;
-			depth *= omni_lights.data[idx].inv_radius;
-			shadow = mix(1.0, sample_omni_pcf_shadow(shadow_atlas, omni_lights.data[idx].soft_shadow_scale / shadow_sample.z, pos, uv_rect, flip_offset, depth), omni_lights.data[idx].shadow_opacity);
-		}
-
-		return shadow;
-	}
-#endif
-
-	return 1.0;
-}
-
 void light_process_omni(uint idx, vec3 vertex, vec3 eye_vec, vec3 normal, vec3 vertex_ddx, vec3 vertex_ddy, vec3 f0, uint orms, float shadow, vec3 albedo, inout float alpha,
 #ifdef LIGHT_BACKLIGHT_USED
 		vec3 backlight,
@@ -994,7 +1085,7 @@ void light_process_omni(uint idx, vec3 vertex, vec3 eye_vec, vec3 normal, vec3 v
 
 	light_attenuation *= shadow;
 
-	light_compute(normal, normalize(light_rel_vec), eye_vec, size_A, color, idx, false, false, true, light_attenuation, f0, orms, omni_lights.data[idx].specular_amount, albedo, alpha,
+	light_compute(normal, normalize(light_rel_vec), eye_vec, size_A, color, idx, false, false, true, light_attenuation, omni_attenuation, f0, orms, omni_lights.data[idx].specular_amount, albedo, alpha,
 #ifdef LIGHT_BACKLIGHT_USED
 			backlight,
 #endif
@@ -1015,89 +1106,6 @@ void light_process_omni(uint idx, vec3 vertex, vec3 eye_vec, vec3 normal, vec3 v
 #endif
 			diffuse_light,
 			specular_light);
-}
-
-float light_process_spot_shadow(uint idx, vec3 vertex, vec3 normal) {
-#ifndef SHADOWS_DISABLED
-	if (spot_lights.data[idx].shadow_opacity > 0.001) {
-		vec3 light_rel_vec = spot_lights.data[idx].position - vertex;
-		float light_length = length(light_rel_vec);
-		vec3 spot_dir = spot_lights.data[idx].direction;
-
-		vec3 shadow_dir = light_rel_vec / light_length;
-		vec3 normal_bias = normal * light_length * spot_lights.data[idx].shadow_normal_bias * (1.0 - abs(dot(normal, shadow_dir)));
-
-		//there is a shadowmap
-		vec4 v = vec4(vertex + normal_bias, 1.0);
-
-		vec4 splane = (spot_lights.data[idx].shadow_matrix * v);
-		splane.z -= spot_lights.data[idx].shadow_bias / (light_length * spot_lights.data[idx].inv_radius);
-		splane /= splane.w;
-
-		float shadow;
-		if (sc_use_light_soft_shadows && spot_lights.data[idx].soft_shadow_size > 0.0) {
-			//soft shadow
-
-			//find blocker
-			float z_norm = dot(spot_dir, -light_rel_vec) * spot_lights.data[idx].inv_radius;
-
-			vec2 shadow_uv = splane.xy * spot_lights.data[idx].atlas_rect.zw + spot_lights.data[idx].atlas_rect.xy;
-
-			float blocker_count = 0.0;
-			float blocker_average = 0.0;
-
-			mat2 disk_rotation;
-			{
-				float r = quick_hash(gl_FragCoord.xy) * 2.0 * M_PI;
-				float sr = sin(r);
-				float cr = cos(r);
-				disk_rotation = mat2(vec2(cr, -sr), vec2(sr, cr));
-			}
-
-			float uv_size = spot_lights.data[idx].soft_shadow_size * z_norm * spot_lights.data[idx].soft_shadow_scale;
-			vec2 clamp_max = spot_lights.data[idx].atlas_rect.xy + spot_lights.data[idx].atlas_rect.zw;
-			for (uint i = 0; i < sc_penumbra_shadow_samples; i++) {
-				vec2 suv = shadow_uv + (disk_rotation * scene_data_block.data.penumbra_shadow_kernel[i].xy) * uv_size;
-				suv = clamp(suv, spot_lights.data[idx].atlas_rect.xy, clamp_max);
-				float d = textureLod(sampler2D(shadow_atlas, SAMPLER_LINEAR_CLAMP), suv, 0.0).r;
-				if (d < splane.z) {
-					blocker_average += d;
-					blocker_count += 1.0;
-				}
-			}
-
-			if (blocker_count > 0.0) {
-				//blockers found, do soft shadow
-				blocker_average /= blocker_count;
-				float penumbra = (z_norm - blocker_average) / blocker_average;
-				uv_size *= penumbra;
-
-				shadow = 0.0;
-				for (uint i = 0; i < sc_penumbra_shadow_samples; i++) {
-					vec2 suv = shadow_uv + (disk_rotation * scene_data_block.data.penumbra_shadow_kernel[i].xy) * uv_size;
-					suv = clamp(suv, spot_lights.data[idx].atlas_rect.xy, clamp_max);
-					shadow += textureProj(sampler2DShadow(shadow_atlas, shadow_sampler), vec4(suv, splane.z, 1.0));
-				}
-
-				shadow /= float(sc_penumbra_shadow_samples);
-				shadow = mix(1.0, shadow, spot_lights.data[idx].shadow_opacity);
-
-			} else {
-				//no blockers found, so no shadow
-				shadow = 1.0;
-			}
-		} else {
-			//hard shadow
-			vec3 shadow_uv = vec3(splane.xy * spot_lights.data[idx].atlas_rect.zw + spot_lights.data[idx].atlas_rect.xy, splane.z);
-			shadow = mix(1.0, sample_pcf_shadow(shadow_atlas, spot_lights.data[idx].soft_shadow_scale * scene_data_block.data.shadow_atlas_pixel_size, shadow_uv), spot_lights.data[idx].shadow_opacity);
-		}
-
-		return shadow;
-	}
-
-#endif // SHADOWS_DISABLED
-
-	return 1.0;
 }
 
 vec2 normal_to_panorama(vec3 n) {
@@ -1201,7 +1209,7 @@ void light_process_spot(uint idx, vec3 vertex, vec3 eye_vec, vec3 normal, vec3 v
 	}
 	light_attenuation *= shadow;
 
-	light_compute(normal, normalize(light_rel_vec), eye_vec, size_A, color, idx, false, true, false, light_attenuation, f0, orms, spot_lights.data[idx].specular_amount, albedo, alpha,
+	light_compute(normal, normalize(light_rel_vec), eye_vec, size_A, color, idx, false, true, false, light_attenuation, spot_attenuation, f0, orms, spot_lights.data[idx].specular_amount, albedo, alpha,
 #ifdef LIGHT_BACKLIGHT_USED
 			backlight,
 #endif

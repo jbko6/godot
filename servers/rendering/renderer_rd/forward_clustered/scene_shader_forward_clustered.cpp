@@ -645,6 +645,7 @@ void SceneShaderForwardClustered::init(const String p_defines) {
 		actions.renames["LIGHT_IS_OMNI"] = "is_omni";
 		actions.renames["LIGHT"] = "light";
 		actions.renames["ATTENUATION"] = "attenuation";
+		actions.renames["AMPLITUDE"] = "amplitude";
 		actions.renames["DIFFUSE_LIGHT"] = "diffuse_light";
 		actions.renames["SPECULAR_LIGHT"] = "specular_light";
 
