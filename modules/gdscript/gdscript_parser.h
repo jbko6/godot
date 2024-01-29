@@ -223,7 +223,7 @@ public:
 		}
 
 		bool operator!=(const DataType &p_other) const {
-			return !(this->operator==(p_other));
+			return !(*this == p_other);
 		}
 
 		void operator=(const DataType &p_other) {
@@ -736,6 +736,8 @@ public:
 		IdentifierNode *identifier = nullptr;
 		String icon_path;
 		String simplified_icon_path;
+		String uid_string;
+		Vector2i uid_lines = Vector2i(-1, -1);
 		Vector<Member> members;
 		HashMap<StringName, int> members_indices;
 		ClassNode *outer = nullptr;
@@ -1318,6 +1320,7 @@ private:
 	friend class GDScriptAnalyzer;
 
 	bool _is_tool = false;
+	bool _has_uid = false;
 	String script_path;
 	bool for_completion = false;
 	bool panic_mode = false;
@@ -1370,7 +1373,7 @@ private:
 		AnnotationAction apply = nullptr;
 		MethodInfo info;
 	};
-	HashMap<StringName, AnnotationInfo> valid_annotations;
+	static HashMap<StringName, AnnotationInfo> valid_annotations;
 	List<AnnotationNode *> annotation_stack;
 
 	typedef ExpressionNode *(GDScriptParser::*ParseFunction)(ExpressionNode *p_previous_operand, bool p_can_assign);
@@ -1470,9 +1473,10 @@ private:
 	SuiteNode *parse_suite(const String &p_context, SuiteNode *p_suite = nullptr, bool p_for_lambda = false);
 	// Annotations
 	AnnotationNode *parse_annotation(uint32_t p_valid_targets);
-	bool register_annotation(const MethodInfo &p_info, uint32_t p_target_kinds, AnnotationAction p_apply, const Vector<Variant> &p_default_arguments = Vector<Variant>(), bool p_is_vararg = false);
+	static bool register_annotation(const MethodInfo &p_info, uint32_t p_target_kinds, AnnotationAction p_apply, const Vector<Variant> &p_default_arguments = Vector<Variant>(), bool p_is_vararg = false);
 	bool validate_annotation_arguments(AnnotationNode *p_annotation);
 	void clear_unused_annotations();
+	bool uid_annotation(const AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool tool_annotation(const AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool icon_annotation(const AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);
 	bool onready_annotation(const AnnotationNode *p_annotation, Node *p_target, ClassNode *p_class);

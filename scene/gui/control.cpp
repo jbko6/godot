@@ -33,7 +33,6 @@
 #include "container.h"
 #include "core/config/project_settings.h"
 #include "core/math/geometry_2d.h"
-#include "core/object/message_queue.h"
 #include "core/os/keyboard.h"
 #include "core/os/os.h"
 #include "core/string/print_string.h"
@@ -197,9 +196,15 @@ void Control::reparent(Node *p_parent, bool p_keep_global_transform) {
 
 // Editor integration.
 
+int Control::root_layout_direction = 0;
+
+void Control::set_root_layout_direction(int p_root_dir) {
+	root_layout_direction = p_root_dir;
+}
+
 void Control::get_argument_options(const StringName &p_function, int p_idx, List<String> *r_options) const {
 	ERR_READ_THREAD_GUARD;
-	Node::get_argument_options(p_function, p_idx, r_options);
+	CanvasItem::get_argument_options(p_function, p_idx, r_options);
 
 	if (p_idx == 0) {
 		List<StringName> sn;
@@ -1414,13 +1419,15 @@ void Control::_set_global_position(const Point2 &p_point) {
 
 void Control::set_global_position(const Point2 &p_point, bool p_keep_offsets) {
 	ERR_MAIN_THREAD_GUARD;
-	Transform2D inv;
 
-	if (data.parent_canvas_item) {
-		inv = data.parent_canvas_item->get_global_transform().affine_inverse();
+	Transform2D global_transform_cache = get_global_transform();
+	if (p_point == global_transform_cache.get_origin()) {
+		return; // Edge case, but avoids calculation.
 	}
 
-	set_position(inv.xform(p_point), p_keep_offsets);
+	Point2 internal_position = global_transform_cache.affine_inverse().xform(p_point);
+
+	set_position(internal_position + data.pos_cache, p_keep_offsets);
 }
 
 Point2 Control::get_global_position() const {
@@ -1625,7 +1632,7 @@ void Control::update_minimum_size() {
 	}
 	data.updating_last_minimum_size = true;
 
-	MessageQueue::get_singleton()->push_callable(callable_mp(this, &Control::_update_minimum_size));
+	callable_mp(this, &Control::_update_minimum_size).call_deferred();
 }
 
 void Control::set_block_minimum_size_adjust(bool p_block) {
@@ -2543,7 +2550,7 @@ StringName Control::get_theme_type_variation() const {
 Ref<Texture2D> Control::get_theme_icon(const StringName &p_name, const StringName &p_theme_type) const {
 	ERR_READ_THREAD_GUARD_V(Ref<Texture2D>());
 	if (!data.initialized) {
-		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", this->get_description()));
+		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", get_description()));
 	}
 
 	if (p_theme_type == StringName() || p_theme_type == get_class_name() || p_theme_type == data.theme_type_variation) {
@@ -2567,7 +2574,7 @@ Ref<Texture2D> Control::get_theme_icon(const StringName &p_name, const StringNam
 Ref<StyleBox> Control::get_theme_stylebox(const StringName &p_name, const StringName &p_theme_type) const {
 	ERR_READ_THREAD_GUARD_V(Ref<StyleBox>());
 	if (!data.initialized) {
-		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", this->get_description()));
+		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", get_description()));
 	}
 
 	if (p_theme_type == StringName() || p_theme_type == get_class_name() || p_theme_type == data.theme_type_variation) {
@@ -2591,7 +2598,7 @@ Ref<StyleBox> Control::get_theme_stylebox(const StringName &p_name, const String
 Ref<Font> Control::get_theme_font(const StringName &p_name, const StringName &p_theme_type) const {
 	ERR_READ_THREAD_GUARD_V(Ref<Font>());
 	if (!data.initialized) {
-		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", this->get_description()));
+		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", get_description()));
 	}
 
 	if (p_theme_type == StringName() || p_theme_type == get_class_name() || p_theme_type == data.theme_type_variation) {
@@ -2615,7 +2622,7 @@ Ref<Font> Control::get_theme_font(const StringName &p_name, const StringName &p_
 int Control::get_theme_font_size(const StringName &p_name, const StringName &p_theme_type) const {
 	ERR_READ_THREAD_GUARD_V(0);
 	if (!data.initialized) {
-		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", this->get_description()));
+		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", get_description()));
 	}
 
 	if (p_theme_type == StringName() || p_theme_type == get_class_name() || p_theme_type == data.theme_type_variation) {
@@ -2639,7 +2646,7 @@ int Control::get_theme_font_size(const StringName &p_name, const StringName &p_t
 Color Control::get_theme_color(const StringName &p_name, const StringName &p_theme_type) const {
 	ERR_READ_THREAD_GUARD_V(Color());
 	if (!data.initialized) {
-		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", this->get_description()));
+		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", get_description()));
 	}
 
 	if (p_theme_type == StringName() || p_theme_type == get_class_name() || p_theme_type == data.theme_type_variation) {
@@ -2663,7 +2670,7 @@ Color Control::get_theme_color(const StringName &p_name, const StringName &p_the
 int Control::get_theme_constant(const StringName &p_name, const StringName &p_theme_type) const {
 	ERR_READ_THREAD_GUARD_V(0);
 	if (!data.initialized) {
-		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", this->get_description()));
+		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", get_description()));
 	}
 
 	if (p_theme_type == StringName() || p_theme_type == get_class_name() || p_theme_type == data.theme_type_variation) {
@@ -2714,7 +2721,7 @@ Ref<Texture2D> Control::get_editor_theme_icon(const StringName &p_name) const {
 bool Control::has_theme_icon(const StringName &p_name, const StringName &p_theme_type) const {
 	ERR_READ_THREAD_GUARD_V(false);
 	if (!data.initialized) {
-		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", this->get_description()));
+		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", get_description()));
 	}
 
 	if (p_theme_type == StringName() || p_theme_type == get_class_name() || p_theme_type == data.theme_type_variation) {
@@ -2731,7 +2738,7 @@ bool Control::has_theme_icon(const StringName &p_name, const StringName &p_theme
 bool Control::has_theme_stylebox(const StringName &p_name, const StringName &p_theme_type) const {
 	ERR_READ_THREAD_GUARD_V(false);
 	if (!data.initialized) {
-		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", this->get_description()));
+		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", get_description()));
 	}
 
 	if (p_theme_type == StringName() || p_theme_type == get_class_name() || p_theme_type == data.theme_type_variation) {
@@ -2748,7 +2755,7 @@ bool Control::has_theme_stylebox(const StringName &p_name, const StringName &p_t
 bool Control::has_theme_font(const StringName &p_name, const StringName &p_theme_type) const {
 	ERR_READ_THREAD_GUARD_V(false);
 	if (!data.initialized) {
-		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", this->get_description()));
+		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", get_description()));
 	}
 
 	if (p_theme_type == StringName() || p_theme_type == get_class_name() || p_theme_type == data.theme_type_variation) {
@@ -2765,7 +2772,7 @@ bool Control::has_theme_font(const StringName &p_name, const StringName &p_theme
 bool Control::has_theme_font_size(const StringName &p_name, const StringName &p_theme_type) const {
 	ERR_READ_THREAD_GUARD_V(false);
 	if (!data.initialized) {
-		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", this->get_description()));
+		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", get_description()));
 	}
 
 	if (p_theme_type == StringName() || p_theme_type == get_class_name() || p_theme_type == data.theme_type_variation) {
@@ -2782,7 +2789,7 @@ bool Control::has_theme_font_size(const StringName &p_name, const StringName &p_
 bool Control::has_theme_color(const StringName &p_name, const StringName &p_theme_type) const {
 	ERR_READ_THREAD_GUARD_V(false);
 	if (!data.initialized) {
-		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", this->get_description()));
+		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", get_description()));
 	}
 
 	if (p_theme_type == StringName() || p_theme_type == get_class_name() || p_theme_type == data.theme_type_variation) {
@@ -2799,7 +2806,7 @@ bool Control::has_theme_color(const StringName &p_name, const StringName &p_them
 bool Control::has_theme_constant(const StringName &p_name, const StringName &p_theme_type) const {
 	ERR_READ_THREAD_GUARD_V(false);
 	if (!data.initialized) {
-		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", this->get_description()));
+		WARN_PRINT_ONCE(vformat("Attempting to access theme items too early in %s; prefer NOTIFICATION_POSTINITIALIZE and NOTIFICATION_THEME_CHANGED", get_description()));
 	}
 
 	if (p_theme_type == StringName() || p_theme_type == get_class_name() || p_theme_type == data.theme_type_variation) {
@@ -3024,10 +3031,35 @@ bool Control::is_layout_rtl() const {
 	if (data.is_rtl_dirty) {
 		const_cast<Control *>(this)->data.is_rtl_dirty = false;
 		if (data.layout_dir == LAYOUT_DIRECTION_INHERITED) {
+#ifdef TOOLS_ENABLED
+			if (is_part_of_edited_scene() && GLOBAL_GET(SNAME("internationalization/rendering/force_right_to_left_layout_direction"))) {
+				const_cast<Control *>(this)->data.is_rtl = true;
+				return data.is_rtl;
+			}
+			if (is_inside_tree()) {
+				Node *edited_scene_root = get_tree()->get_edited_scene_root();
+				if (edited_scene_root == this) {
+					int proj_root_layout_direction = GLOBAL_GET(SNAME("internationalization/rendering/root_node_layout_direction"));
+					if (proj_root_layout_direction == 1) {
+						const_cast<Control *>(this)->data.is_rtl = false;
+					} else if (proj_root_layout_direction == 2) {
+						const_cast<Control *>(this)->data.is_rtl = true;
+					} else if (proj_root_layout_direction == 3) {
+						String locale = OS::get_singleton()->get_locale();
+						const_cast<Control *>(this)->data.is_rtl = TS->is_locale_right_to_left(locale);
+					} else {
+						String locale = TranslationServer::get_singleton()->get_tool_locale();
+						const_cast<Control *>(this)->data.is_rtl = TS->is_locale_right_to_left(locale);
+					}
+					return data.is_rtl;
+				}
+			}
+#else
 			if (GLOBAL_GET(SNAME("internationalization/rendering/force_right_to_left_layout_direction"))) {
 				const_cast<Control *>(this)->data.is_rtl = true;
 				return data.is_rtl;
 			}
+#endif
 			Node *parent_node = get_parent();
 			while (parent_node) {
 				Control *parent_control = Object::cast_to<Control>(parent_node);
@@ -3044,11 +3076,13 @@ bool Control::is_layout_rtl() const {
 				parent_node = parent_node->get_parent();
 			}
 
-			int root_dir = GLOBAL_GET(SNAME("internationalization/rendering/root_node_layout_direction"));
-			if (root_dir == 1) {
+			if (root_layout_direction == 1) {
 				const_cast<Control *>(this)->data.is_rtl = false;
-			} else if (root_dir == 2) {
+			} else if (root_layout_direction == 2) {
 				const_cast<Control *>(this)->data.is_rtl = true;
+			} else if (root_layout_direction == 3) {
+				String locale = OS::get_singleton()->get_locale();
+				const_cast<Control *>(this)->data.is_rtl = TS->is_locale_right_to_left(locale);
 			} else {
 				String locale = TranslationServer::get_singleton()->get_tool_locale();
 				const_cast<Control *>(this)->data.is_rtl = TS->is_locale_right_to_left(locale);
